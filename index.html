@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Quiz – Dynamics Lab</title>
+<meta name="robots" content="noindex">
+<style>
+:root{
+  --blue:#0b6bcb; --navy:#0a2a5c; --ink:#14213d; --muted:#5b6b82; --line:#dfe6f0;
+  --bg:#f5f8fc; --card:#fff; --ok:#16794c; --okbg:#e7f6ee; --bad:#b42318; --badbg:#fdecea;
+  --warn:#8a6100; --warnbg:#fff7e0;
+}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+a{color:var(--blue)}
+header.top{background:#fff;border-bottom:1px solid var(--line)}
+header.top .in{max-width:860px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--navy);text-decoration:none}
+.brand i{width:18px;height:18px;border:3px solid var(--blue);border-radius:50%;display:inline-block}
+.hero{background:linear-gradient(100deg,#062a63,#0b6bcb 60%,#16a3a0);color:#fff}
+.hero .in{max-width:860px;margin:0 auto;padding:22px 16px}
+.crumbs{font-size:13px;opacity:.9}
+.crumbs a{color:#fff}
+.hero h1{margin:6px 0 0;font-size:28px}
+main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:11px 22px;font:600 15px system-ui,sans-serif;cursor:pointer;background:var(--blue);color:#fff;text-decoration:none}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:#fff;color:var(--blue);border:1.5px solid var(--blue)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.muted{color:var(--muted)}
+.facts{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 20px;padding:0;list-style:none}
+.facts li{background:#eef4fc;border-radius:999px;padding:6px 14px;font-size:14px;font-weight:600;color:var(--navy)}
+.note{background:var(--warnbg);border-left:4px solid #e3b23c;border-radius:10px;padding:12px 16px;font-size:14px;margin-top:18px}
+/* quiz */
+.bar{position:sticky;top:0;z-index:5;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;box-shadow:0 4px 14px rgba(10,42,92,.06)}
+.timer{font:700 20px ui-monospace,Consolas,monospace;color:var(--navy)}
+.timer.low{color:var(--bad)}
+.progress{height:6px;background:#e7edf5;border-radius:6px;overflow:hidden;margin-top:6px;width:180px}
+.progress span{display:block;height:100%;background:var(--blue)}
+.qnum{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--blue)}
+.qtext{font-size:19px;font-weight:650;margin:6px 0 16px}
+.multi{font-size:13px;color:var(--muted);margin:-8px 0 12px}
+.opt{display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;background:#fff}
+.opt:hover{border-color:#a9c4e6}
+.opt.sel{border-color:var(--blue);background:#eef5fd}
+.opt input{margin-top:4px;accent-color:var(--blue)}
+.opt b{min-width:18px}
+.nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px;flex-wrap:wrap}
+.grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:18px}
+.grid button{width:36px;height:36px;border-radius:8px;border:1.5px solid var(--line);background:#fff;font-weight:600;cursor:pointer;color:var(--ink)}
+.grid button.done{background:#dbe9fb;border-color:#a9c4e6}
+.grid button.cur{border-color:var(--blue);outline:2px solid var(--blue)}
+/* results */
+.score{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.ring{width:120px;height:120px;border-radius:50%;display:grid;place-items:center;font:800 28px system-ui;color:var(--navy)}
+.ring span{background:#fff;width:92px;height:92px;border-radius:50%;display:grid;place-items:center}
+.pill{display:inline-block;border-radius:999px;padding:3px 12px;font-size:13px;font-weight:700}
+.pill.ok{background:var(--okbg);color:var(--ok)} .pill.bad{background:var(--badbg);color:var(--bad)}
+.tabs{display:flex;gap:8px;margin:22px 0 12px;flex-wrap:wrap}
+.tabs button{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;font-weight:600;cursor:pointer;color:var(--ink)}
+.tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.res{border:1px solid var(--line);border-left:5px solid var(--ok);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:#fff}
+.res.bad{border-left-color:var(--bad)}
+.res h3{font-size:16px;margin:4px 0 8px}
+.res ul{margin:6px 0;padding-left:0;list-style:none}
+.res li{padding:3px 8px;border-radius:6px;margin:2px 0;font-size:15px}
+.res li.right{background:var(--okbg);color:var(--ok);font-weight:600}
+.res li.wrong{background:var(--badbg);color:var(--bad);text-decoration:line-through}
+.res .exp{font-size:14px;color:var(--muted);margin-top:8px}
+.center{text-align:center}
+.err{background:var(--badbg);color:var(--bad);border-radius:12px;padding:14px 16px}
+dialog{border:0;border-radius:16px;padding:22px;max-width:420px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(10,42,92,.35)}
+@media (max-width:560px){.hero h1{font-size:23px}.qtext{font-size:17px}.progress{width:110px}.card{padding:16px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="in">
+  <a class="brand" id="homeLink" href="https://d365microsoft.wordpress.com/"><i></i>Dynamics Lab</a>
+  <a id="backTop" class="muted" href="https://d365microsoft.wordpress.com/learn/">← Back to the exam</a>
+</div></header>
+<section class="hero"><div class="in">
+  <div class="crumbs"><a href="https://d365microsoft.wordpress.com/">Home</a> › <a href="https://d365microsoft.wordpress.com/learn/">Microsoft Exams</a> › <a id="crumbExam" href="#">Exam</a></div>
+  <h1 id="title">Practice quiz</h1>
+</div></section>
+<main id="app"><div class="card center muted">Loading questions…</div></main>
+
+<dialog id="confirm">
+  <h3 style="margin-top:0">Finish the quiz?</h3>
+  <p id="confirmText" class="muted"></p>
+  <p class="muted" style="font-size:14px">After you finish, you can't change your answers.</p>
+  <div class="nav"><button class="btn ghost" id="cNo">Keep going</button><button class="btn" id="cYes">Finish and see results</button></div>
+</dialog>
+
+<script>
+(function(){
+'use strict';
+// ---------- settings ----------
+var SITE = 'd365microsoft.wordpress.com';
+var QUESTIONS_PER_QUIZ = 30;
+var TIME_LIMIT_MIN = 60;
+var API = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE + '/pages';
+
+var params = new URLSearchParams(location.search);
+var exam = (params.get('exam') || '').toLowerCase().replace(/[^a-z0-9-]/g,'');
+var app = document.getElementById('app');
+var examUrl = 'https://' + SITE + '/learn/' + exam + '/';
+var quizUrl = examUrl + 'quiz/';
+var KEY = 'dl-quiz-' + exam;
+var bank = [], state = null, tick = null, filter = 'all';
+
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function save(){try{localStorage.setItem(KEY, JSON.stringify(state));}catch(e){}}
+function load(){try{return JSON.parse(localStorage.getItem(KEY));}catch(e){return null;}}
+function clear(){try{localStorage.removeItem(KEY);}catch(e){}}
+
+// ---------- read the question bank from the WordPress Quiz page ----------
+function getJSON(url){return fetch(url,{credentials:'omit'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});}
+
+function parseBank(html){
+  var doc = new DOMParser().parseFromString(html,'text/html');
+  var out = [];
+  doc.querySelectorAll('.dl-qq').forEach(function(g, i){
+    var h = g.querySelector('h1,h2,h3,h4,h5,h6');
+    var q = h ? h.textContent.trim() : '';
+    var opts = Array.prototype.map.call(g.querySelectorAll('li'), function(li){
+      return li.textContent.trim().replace(/^[A-Ha-h]\s*[.):]\s*/,'');
+    }).filter(Boolean);
+    var correct = [], exp = '';
+    g.querySelectorAll('p').forEach(function(p){
+      var t = p.textContent.trim();
+      var m = t.match(/^correct(?:\s+answers?)?\s*[:\-–]\s*(.+)$/i);
+      if (m) { (m[1].toUpperCase().match(/\b[A-H]\b/g)||[]).forEach(function(l){ correct.push(l.charCodeAt(0)-65); }); }
+      var e = t.match(/^explanation\s*[:\-–]\s*([\s\S]*)$/i);
+      if (e) exp = e[1].trim();
+    });
+    correct = correct.filter(function(c){return c < opts.length;});
+    if (q && opts.length >= 2 && correct.length) out.push({id: 'q'+i+'-'+q.length, q:q, o:opts, c:correct.sort(), e:exp});
+  });
+  return out;
+}
+
+function loadBank(){
+  return getJSON(API + '?slug=' + encodeURIComponent(exam) + '&_fields=id,title,link').then(function(ex){
+    if (!ex.length) throw new Error('exam');
+    document.getElementById('title').textContent = ex[0].title.rendered.replace(/<[^>]+>/g,'') + ' practice quiz';
+    document.title = ex[0].title.rendered.replace(/<[^>]+>/g,'') + ' Practice Quiz – Dynamics Lab';
+    return getJSON(API + '?parent=' + ex[0].id + '&slug=quiz&_fields=content');
+  }).then(function(q){
+    if (!q.length) throw new Error('quiz');
+    return parseBank(q[0].content.rendered);
+  });
+}
+
+// ---------- quiz flow ----------
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+
+function startNew(){
+  var pick = shuffle(bank).slice(0, QUESTIONS_PER_QUIZ);
+  state = {
+    started: Date.now(),
+    ends: Date.now() + TIME_LIMIT_MIN*60000,
+    qs: pick.map(function(q){return {id:q.id,q:q.q,o:q.o,c:q.c,e:q.e};}),
+    ans: pick.map(function(){return [];}),
+    cur: 0, finished: false, timedOut: false, finishedAt: null
+  };
+  save(); renderQuiz();
+}
+
+function finish(timedOut){
+  if (!state || state.finished) return;
+  state.finished = true; state.timedOut = !!timedOut; state.finishedAt = Date.now();
+  save(); clearInterval(tick); filter='all'; renderResults(); window.scrollTo(0,0);
+}
+
+function fmt(ms){ms=Math.max(0,ms);var s=Math.ceil(ms/1000);var m=Math.floor(s/60);s=s%60;return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
+
+function startTimer(){
+  clearInterval(tick);
+  function upd(){
+    var left = state.ends - Date.now();
+    var el = document.getElementById('timer');
+    if (el){ el.textContent = fmt(left); el.classList.toggle('low', left < 5*60000); }
+    if (left <= 0) finish(true);
+  }
+  upd(); tick = setInterval(upd, 1000);
+}
+
+function answered(i){return state.ans[i].length>0;}
+
+function renderQuiz(){
+  var i = state.cur, q = state.qs[i], n = state.qs.length;
+  var multi = q.c.length > 1;
+  var done = state.ans.filter(function(a){return a.length;}).length;
+  var h = '<div class="bar"><div><div class="qnum">Question '+(i+1)+' of '+n+'</div>'+
+    '<div class="progress"><span style="width:'+Math.round(done/n*100)+'%"></span></div></div>'+
+    '<div class="center"><div class="muted" style="font-size:12px">Time left</div><div class="timer" id="timer">--:--</div></div>'+
+    '<button class="btn" id="finishBtn">Finish</button></div>';
+  h += '<div class="card"><div class="qtext">'+esc(q.q)+'</div>';
+  if (multi) h += '<div class="multi">Choose '+q.c.length+' answers.</div>';
+  q.o.forEach(function(o, k){
+    var sel = state.ans[i].indexOf(k) > -1;
+    h += '<label class="opt'+(sel?' sel':'')+'"><input type="'+(multi?'checkbox':'radio')+'" name="o" value="'+k+'"'+(sel?' checked':'')+'>'+
+      '<b>'+String.fromCharCode(65+k)+'.</b><span>'+esc(o)+'</span></label>';
+  });
+  h += '<div class="nav"><button class="btn ghost" id="prev"'+(i===0?' disabled':'')+'>← Previous</button>'+
+    (i<n-1 ? '<button class="btn" id="next">Next →</button>' : '<button class="btn" id="fin2">Finish quiz</button>')+'</div>';
+  h += '<div class="grid">'+state.qs.map(function(_,k){return '<button data-k="'+k+'" class="'+(answered(k)?'done ':'')+(k===i?'cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>';}).join('')+'</div></div>';
+  app.innerHTML = h;
+
+  app.querySelectorAll('input[name=o]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var picked = Array.prototype.filter.call(app.querySelectorAll('input[name=o]'), function(x){return x.checked;}).map(function(x){return +x.value;});
+      state.ans[i] = picked; save(); renderQuiz();
+    });
+  });
+  var go = function(k){state.cur=k;save();renderQuiz();window.scrollTo(0,0);};
+  var prev=document.getElementById('prev'); if(prev) prev.onclick=function(){go(i-1);};
+  var next=document.getElementById('next'); if(next) next.onclick=function(){go(i+1);};
+  app.querySelectorAll('.grid button').forEach(function(b){b.onclick=function(){go(+b.dataset.k);};});
+  var ask=function(){
+    var left = n - state.ans.filter(function(a){return a.length;}).length;
+    document.getElementById('confirmText').textContent = left ? ('You have '+left+' unanswered question'+(left>1?'s':'')+'. Unanswered questions count as incorrect.') : 'You have answered all questions.';
+    document.getElementById('confirm').showModal();
+  };
+  document.getElementById('finishBtn').onclick=ask;
+  var f2=document.getElementById('fin2'); if(f2) f2.onclick=ask;
+  startTimer();
+}
+
+function isRight(k){var a=state.ans[k].slice().sort(),c=state.qs[k].c;return a.length===c.length&&a.every(function(v,j){return v===c[j];});}
+
+function renderResults(){
+  var n = state.qs.length, right = 0;
+  for (var k=0;k<n;k++) if (isRight(k)) right++;
+  var pct = n ? Math.round(right/n*100) : 0;
+  var used = Math.min(state.finishedAt, state.ends) - state.started;
+  var col = pct>=70 ? 'var(--ok)' : 'var(--bad)';
+  var h = '<div class="card"><div class="score">'+
+    '<div class="ring" style="background:conic-gradient('+col+' '+pct*3.6+'deg,#e7edf5 0)"><span>'+pct+'%</span></div>'+
+    '<div><h2 style="margin:0 0 6px">'+(state.timedOut?'⏰ Time is up':'Quiz finished')+'</h2>'+
+    '<div><span class="pill ok">✓ '+right+' correct</span> <span class="pill bad">✗ '+(n-right)+' incorrect</span></div>'+
+    '<p class="muted" style="margin:10px 0 0">'+right+' of '+n+' questions correct · time used '+fmt(used)+'</p></div></div>'+
+    '<div class="nav" style="justify-content:flex-start"><button class="btn" id="again">Start a new quiz</button><a class="btn ghost" href="'+quizUrl+'">Back to '+esc(exam.toUpperCase())+'</a></div>'+
+    '<div class="note">ℹ️ This quiz is only for checking your knowledge level. The questions are not taken from the real exam.</div></div>';
+  h += '<div class="tabs" role="tablist">'+
+    ['all','right','wrong'].map(function(f){var lbl={all:'All ('+n+')',right:'Correct ('+right+')',wrong:'Incorrect ('+(n-right)+')'}[f];return '<button data-f="'+f+'" class="'+(filter===f?'on':'')+'">'+lbl+'</button>';}).join('')+'</div>';
+  state.qs.forEach(function(q,k){
+    var ok = isRight(k);
+    if (filter==='right' && !ok) return; if (filter==='wrong' && ok) return;
+    h += '<div class="res'+(ok?'':' bad')+'"><span class="pill '+(ok?'ok':'bad')+'">'+(ok?'✓ Correct':(state.ans[k].length?'✗ Incorrect':'✗ Not answered'))+'</span>'+
+      '<h3>'+(k+1)+'. '+esc(q.q)+'</h3><ul>';
+    q.o.forEach(function(o,j){
+      var isC=q.c.indexOf(j)>-1, isA=state.ans[k].indexOf(j)>-1;
+      var cls = isC ? 'right' : (isA ? 'wrong' : '');
+      h += '<li class="'+cls+'">'+String.fromCharCode(65+j)+'. '+esc(o)+(isA?' — your answer':'')+(isC?' ✓':'')+'</li>';
+    });
+    h += '</ul>'+(q.e?'<div class="exp"><b>Explanation:</b> '+esc(q.e)+'</div>':'')+'</div>';
+  });
+  app.innerHTML = h;
+  app.querySelectorAll('.tabs button').forEach(function(b){b.onclick=function(){filter=b.dataset.f;renderResults();};});
+  document.getElementById('again').onclick=function(){clear();state=null;startNew();window.scrollTo(0,0);};
+}
+
+function renderIntro(){
+  var n = Math.min(QUESTIONS_PER_QUIZ, bank.length);
+  app.innerHTML = '<div class="card"><h2 style="margin-top:0">Ready to test yourself?</h2>'+
+    '<ul class="facts"><li>📝 '+n+' random questions</li><li>⏱️ '+TIME_LIMIT_MIN+' minutes</li><li>📊 Results at the end</li></ul>'+
+    '<p class="muted">Each time you start, you get a new random set of questions. The timer starts when you click <b>Start quiz</b>. When the time runs out, the quiz ends automatically and you see your results. You can’t change your answers after the quiz ends.</p>'+
+    '<button class="btn" id="go">Start quiz</button>'+
+    '<div class="note">ℹ️ This quiz is only for checking your knowledge level. The questions are not taken from the real exam.</div></div>';
+  document.getElementById('go').onclick=startNew;
+}
+
+document.getElementById('cNo').onclick=function(){document.getElementById('confirm').close();};
+document.getElementById('cYes').onclick=function(){document.getElementById('confirm').close();finish(false);};
+
+// ---------- start ----------
+document.getElementById('crumbExam').textContent = exam ? exam.toUpperCase() : 'Exam';
+document.getElementById('crumbExam').href = examUrl;
+document.getElementById('backTop').href = quizUrl;
+
+if (!exam) { app.innerHTML = '<div class="err">No exam selected. <a href="https://'+SITE+'/learn/">Choose an exam</a>.</div>'; return; }
+
+loadBank().then(function(b){
+  bank = b;
+  var saved = load();
+  var wantsNew = params.get('start') === '1';
+  if (saved && saved.finished && wantsNew) { clear(); saved = null; }
+  if (saved && saved.qs && saved.qs.length) {
+    if (wantsNew) history.replaceState(null,'',location.pathname+'?exam='+exam);
+    state = saved;
+    if (state.finished) { renderResults(); return; }
+    if (Date.now() >= state.ends) { finish(true); return; }
+    renderQuiz(); return;
+  }
+  if (!bank.length) { app.innerHTML = '<div class="card center"><h2>Coming soon</h2><p class="muted">There are no quiz questions for this exam yet. Please check back later.</p><a class="btn ghost" href="'+quizUrl+'">Back</a></div>'; return; }
+  if (wantsNew) { history.replaceState(null,'',location.pathname+'?exam='+exam); startNew(); }
+  else renderIntro();
+}).catch(function(){
+  app.innerHTML = '<div class="err">The quiz could not be loaded. Please refresh the page or try again later. <a href="'+quizUrl+'">Back to the exam</a></div>';
+});
+})();
+</script>
+</body>
+</html>
