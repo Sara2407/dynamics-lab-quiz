@@ -545,9 +545,9 @@ function docMarkup(title, url, mediaId){
     '<!-- /wp:file --></details>\n<!-- /wp:details -->';
 }
 function sectionMarkup(title, desc, inner){
-  return '\n\n<!-- wp:group {"className":"dl-learn-section","layout":{"type":"constrained"}} -->\n<div class="wp-block-group dl-learn-section"><!-- wp:heading {"level":3} -->\n<h3 class="wp-block-heading">' + blockEsc(title) + '</h3>\n<!-- /wp:heading -->' +
-    (desc ? '\n\n<!-- wp:paragraph -->\n<p>' + blockEsc(desc) + '</p>\n<!-- /wp:paragraph -->' : '') +
-    (inner || '\n\n<!-- wp:paragraph {"className":"dl-learn-empty"} -->\n<p class="dl-learn-empty">Documents for this topic are coming soon.</p>\n<!-- /wp:paragraph -->') +
+  return '\n\n<!-- wp:group {"className":"dl-learn-section","style":{"border":{"radius":"12px","top":{"color":"#dfe6f0","style":"solid","width":"1px"},"right":{"color":"#dfe6f0","style":"solid","width":"1px"},"bottom":{"color":"#dfe6f0","style":"solid","width":"1px"},"left":{"color":"#0b6bcb","style":"solid","width":"4px"}},"spacing":{"padding":{"top":"16px","right":"20px","bottom":"16px","left":"20px"},"margin":{"top":"14px"}},"color":{"background":"#ffffff"}},"layout":{"type":"constrained"}} -->\n<div class="wp-block-group dl-learn-section has-background" style="border-radius:12px;border-top-color:#dfe6f0;border-top-style:solid;border-top-width:1px;border-right-color:#dfe6f0;border-right-style:solid;border-right-width:1px;border-bottom-color:#dfe6f0;border-bottom-style:solid;border-bottom-width:1px;border-left-color:#0b6bcb;border-left-style:solid;border-left-width:4px;background-color:#ffffff;margin-top:14px;padding-top:16px;padding-right:20px;padding-bottom:16px;padding-left:20px"><!-- wp:heading {"level":3} -->\n<h3 class="wp-block-heading">' + blockEsc(title) + '</h3>\n<!-- /wp:heading -->' +
+    (desc ? '\n\n<!-- wp:paragraph {"style":{"color":{"text":"#5b6b82"}}} -->\n<p class="has-text-color" style="color:#5b6b82">' + blockEsc(desc) + '</p>\n<!-- /wp:paragraph -->' : '') +
+    (inner || '\n\n<!-- wp:paragraph {"className":"dl-learn-empty","style":{"color":{"text":"#8a97a8"},"typography":{"fontStyle":"italic"}}} -->\n<p class="dl-learn-empty has-text-color" style="color:#8a97a8;font-style:italic">Documents for this topic are coming soon.</p>\n<!-- /wp:paragraph -->') +
     '</div>\n<!-- /wp:group -->';
 }
 function textOf(html){ return new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\s+/g,' ').trim(); }
@@ -559,7 +559,7 @@ function addToSection(raw, title, markup){
     if (end < 0) break;
     var part = raw.slice(start, end), h = part.match(/<h3[^>]*>([\s\S]*?)<\/h3>/);
     if (h && textOf(h[1]) === title) {
-      part = part.replace(/\n*<!-- wp:paragraph \{"className":"dl-learn-empty"\} -->[\s\S]*?<!-- \/wp:paragraph -->/, '');
+      part = part.replace(/\n*<!-- wp:paragraph \{"className":"dl-learn-empty"[^\n]*?-->[\s\S]*?<!-- \/wp:paragraph -->/, '');
       var close = part.lastIndexOf('</div>');
       part = part.slice(0, close) + markup + '\n' + part.slice(close);
       return raw.slice(0, start) + part + raw.slice(end);
