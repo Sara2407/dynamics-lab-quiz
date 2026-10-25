@@ -202,6 +202,13 @@ function startNew(){
   save(); renderQuiz();
 }
 
+// Leaving the page ends the quiz; the next quiz starts from the beginning
+function active(){ return state && !state.finished && params.get('admin') !== '1'; }
+window.addEventListener('beforeunload', function(e){ if (active()) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('pagehide', function(){
+  if (active()) { state.finished = true; state.left = true; state.finishedAt = Math.min(Date.now(), state.ends); save(); }
+});
+
 function finish(timedOut){
   if (!state || state.finished) return;
   state.finished = true; state.timedOut = !!timedOut; state.finishedAt = Date.now();
@@ -240,6 +247,7 @@ function renderQuiz(){
   });
   h += '<div class="nav"><button class="btn ghost" id="prev"'+(i===0?' disabled':'')+'>← Previous</button>'+
     (i<n-1 ? '<button class="btn" id="next">Next →</button>' : '<button class="btn" id="fin2">Finish quiz</button>')+'</div>';
+  h += '<p class="muted" style="font-size:13px;margin:14px 0 0">⚠️ If you leave or refresh this page, the quiz ends and you will need to start a new one.</p>';
   h += '<div class="gridwrap"><button class="arrow" id="gl" aria-label="Scroll left">‹</button><div class="grid" id="grid">'+state.qs.map(function(_,k){return '<button data-k="'+k+'" class="'+(answered(k)?'done ':'')+(k===i?'cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>';}).join('')+'</div><button class="arrow" id="gr" aria-label="Scroll right">›</button></div></div>';
   app.innerHTML = h;
 
@@ -281,7 +289,7 @@ function renderResults(){
   var col = pct>=70 ? 'var(--ok)' : 'var(--bad)';
   var h = '<div class="card"><div class="score">'+
     '<div class="ring" style="background:conic-gradient('+col+' '+pct*3.6+'deg,#e7edf5 0)"><span>'+pct+'%</span></div>'+
-    '<div><h2 style="margin:0 0 6px">'+(state.timedOut?'⏰ Time is up':'Quiz finished')+'</h2>'+
+    '<div><h2 style="margin:0 0 6px">'+(state.timedOut?'⏰ Time is up':(state.left?'🚪 Quiz ended – you left the quiz':'Quiz finished'))+'</h2>'+
     '<div><span class="pill ok">✓ '+right+' correct</span> <span class="pill bad">✗ '+(n-right)+' incorrect</span></div>'+
     '<p class="muted" style="margin:10px 0 0">'+right+' of '+n+' questions correct · time used '+fmt(used)+'</p></div></div>'+
     '<div class="nav" style="justify-content:flex-start"><button class="btn" id="again">Start a new quiz</button><a class="btn ghost" href="'+quizUrl+'">Back to '+esc(exam.toUpperCase())+'</a></div>'+
@@ -309,7 +317,7 @@ function renderIntro(){
   var n = Math.min(QUESTIONS_PER_QUIZ, bank.length);
   app.innerHTML = '<div class="card"><h2 style="margin-top:0">Ready to test yourself?</h2>'+
     '<ul class="facts"><li>📝 '+n+' random questions</li><li>⏱️ '+TIME_LIMIT_MIN+' minutes</li><li>📊 Results at the end</li></ul>'+
-    '<p class="muted">Each time you start, you get a new random set of questions. The timer starts when you click <b>Start quiz</b>. When the time runs out, the quiz ends automatically and you see your results. You can’t change your answers after the quiz ends.</p>'+
+    '<p class="muted">Each time you start, you get a new random set of questions. The timer starts when you click <b>Start quiz</b>. When the time runs out, or if you leave this page, the quiz ends automatically and you see your results. You can’t change your answers after the quiz ends.</p>'+
     '<button class="btn" id="go">Start quiz</button>'+
     '<div class="note">ℹ️ This quiz is only for checking your knowledge level. The questions are not taken from the real exam.</div></div>';
   document.getElementById('go').onclick=startNew;
