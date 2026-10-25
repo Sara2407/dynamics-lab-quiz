@@ -89,6 +89,7 @@ main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
 p.ok{background:var(--okbg);color:var(--ok);border-radius:10px;padding:10px 14px;font-weight:600}
 p.err{background:var(--badbg);color:var(--bad);border-radius:10px;padding:10px 14px}
 .srch{margin:14px 0 6px}
+.adm .filein{display:block;width:100%;margin-top:6px;padding:12px;border:1.5px dashed var(--line);border-radius:10px;background:#fafcff;font:inherit}
 .qlist{padding-left:22px;color:var(--ink)} .qlist li{margin:10px 0;font-size:15px}
 .opt.right{border-color:#5fbf8f;background:var(--okbg)}
 .opt.wrong{border-color:#e59a92;background:var(--badbg)}
@@ -143,7 +144,9 @@ var TOKEN_KEY = 'dl-quiz-admin-token';
 if (location.hash.indexOf('access_token=') > -1) {
   var h = new URLSearchParams(location.hash.slice(1));
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify({t: h.get('access_token'), exp: Date.now() + (parseInt(h.get('expires_in')||'1209600',10)*1000) - 60000})); } catch(e) {}
-  history.replaceState(null, '', location.pathname + '?admin=1&exam=' + encodeURIComponent((h.get('state')||'').replace(/[^a-z0-9-]/gi,'')));
+  var st = h.get('state') || '', kind = '1';
+  if (st.indexOf('learn:') === 0) { kind = 'learn'; st = st.slice(6); }
+  history.replaceState(null, '', location.pathname + '?admin=' + kind + '&exam=' + encodeURIComponent(st.replace(/[^a-z0-9-]/gi,'')));
 } else if (location.hash.indexOf('error=') > -1) {
   history.replaceState(null, '', location.pathname + '?admin=1');
 }
@@ -220,7 +223,7 @@ function startNew(m){
 }
 
 // Leaving the page ends the quiz; the next quiz starts from the beginning
-function active(){ return state && !state.finished && state.mode !== 'practice' && params.get('admin') !== '1'; }
+function active(){ return state && !state.finished && state.mode !== 'practice' && !params.get('admin'); }
 window.addEventListener('beforeunload', function(e){ if (active()) { e.preventDefault(); e.returnValue = ''; } });
 window.addEventListener('pagehide', function(){
   if (active()) { state.finished = true; state.left = true; state.finishedAt = Math.min(Date.now(), state.ends); save(); }
@@ -384,10 +387,11 @@ function restoreDraft(){
 }
 function signIn(ex){
   saveDraft();
+  if (params.get('admin') === 'learn') ex = 'learn:' + (ex || '');
   location.href = 'https://public-api.wordpress.com/oauth2/authorize?client_id=' + encodeURIComponent(CLIENT_ID) +
     '&redirect_uri=' + encodeURIComponent(REDIRECT) + '&response_type=token&blog=257643930&state=' + encodeURIComponent(ex||'');
 }
-function signOut(){try{localStorage.removeItem(TOKEN_KEY);}catch(e){} renderAdmin();}
+function signOut(){try{localStorage.removeItem(TOKEN_KEY);}catch(e){} if (params.get('admin') === 'learn') renderLearnAdmin(); else renderAdmin();}
 function authFetch(url, opts){
   opts = opts || {}; opts.headers = opts.headers || {};
   opts.headers['Authorization'] = 'Bearer ' + getToken();
@@ -405,20 +409,29 @@ function questionMarkup(q, opts, correct, exp){
     '<!-- wp:paragraph -->\n<p>Correct: '+correct+'</p>\n<!-- /wp:paragraph -->\n\n'+
     '<!-- wp:paragraph -->\n<p>Explanation: '+blockEsc(exp||'')+'</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:group -->';
 }
-// Put the new question at the end of the "Question bank" group
-function insertIntoBank(raw, markup){
-  var start = raw.indexOf('"className":"dl-quiz-bank"');
-  if (start < 0) throw new Error('nobank');
-  start = raw.lastIndexOf('<!--', start);
+// Find where a block (starting at the comment at index start) ends: returns index of its closing comment
+function blockEnd(raw, start){
   var re = /<!--\s+(\/)?wp:[a-z0-9\/-]+(?:\s+\{[\s\S]*?\})?\s+(\/)?-->/g; re.lastIndex = start;
   var depth = 0, m;
   while ((m = re.exec(raw))) {
     if (m[2]) continue;           // self-closing block
-    if (m[1]) { depth--; if (depth === 0) { var close = raw.lastIndexOf('</div>', m.index); return raw.slice(0, close) + markup + '\n' + raw.slice(close); } }
+    if (m[1]) { depth--; if (depth === 0) return m.index; }
     else depth++;
   }
-  throw new Error('nobank');
+  return -1;
 }
+// Put markup at the end (inside) of the first group with this class
+function insertIntoGroup(raw, cls, markup){
+  var mm = new RegExp('"className":"(?:[^"]* )?' + cls + '(?: [^"]*)?"').exec(raw);
+  if (!mm) throw new Error('nobank');
+  var start = mm.index;
+  start = raw.lastIndexOf('<!--', start);
+  var end = blockEnd(raw, start); if (end < 0) throw new Error('nobank');
+  var close = raw.lastIndexOf('</div>', end);
+  return raw.slice(0, close) + markup + '\n' + raw.slice(close);
+}
+// Put the new question at the end of the "Question bank" group
+function insertIntoBank(raw, markup){ return insertIntoGroup(raw, 'dl-quiz-bank', markup); }
 function findQuizPage(ex){
   return getJSON(API + '?slug=' + encodeURIComponent(ex) + '&_fields=id,title').then(function(e){
     if (!e.length) throw new Error('exam');
@@ -517,11 +530,167 @@ function renderAdmin(){
   };
 }
 
+// ---------- admin: Learn study materials (PDF) ----------
+function attrEsc(s){return blockEsc(s).replace(/"/g,'&quot;');}
+function uid(){return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16);});}
+function docMarkup(title, url, mediaId){
+  var fid = 'wp-block-file--media-' + uid(), u = attrEsc(url), t = blockEsc(title);
+  return '\n\n<!-- wp:details {"className":"dl-doc"} -->\n<details class="wp-block-details dl-doc"><summary>📄 ' + t + '</summary>' +
+    '<!-- wp:file {"id":' + (+mediaId) + ',"href":"' + u + '","displayPreview":true,"previewHeight":700} -->\n' +
+    '<div class="wp-block-file"><object class="wp-block-file__embed" data="' + u + '" type="application/pdf" style="width:100%;height:700px" aria-label="' + attrEsc(title) + '"></object>' +
+    '<a id="' + fid + '" href="' + u + '">' + t + '</a><a href="' + u + '" class="wp-block-file__button wp-element-button" download aria-describedby="' + fid + '">Download</a></div>\n' +
+    '<!-- /wp:file --></details>\n<!-- /wp:details -->';
+}
+function sectionMarkup(title, desc, inner){
+  return '\n\n<!-- wp:group {"className":"dl-learn-section","layout":{"type":"constrained"}} -->\n<div class="wp-block-group dl-learn-section"><!-- wp:heading {"level":3} -->\n<h3 class="wp-block-heading">' + blockEsc(title) + '</h3>\n<!-- /wp:heading -->' +
+    (desc ? '\n\n<!-- wp:paragraph -->\n<p>' + blockEsc(desc) + '</p>\n<!-- /wp:paragraph -->' : '') +
+    (inner || '\n\n<!-- wp:paragraph {"className":"dl-learn-empty"} -->\n<p class="dl-learn-empty">Documents for this topic are coming soon.</p>\n<!-- /wp:paragraph -->') +
+    '</div>\n<!-- /wp:group -->';
+}
+function textOf(html){ return new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\s+/g,' ').trim(); }
+// Add a document to an existing section (matched by its heading text)
+function addToSection(raw, title, markup){
+  var re = /"className":"dl-learn-section"/g, m;
+  while ((m = re.exec(raw))) {
+    var start = raw.lastIndexOf('<!--', m.index), end = blockEnd(raw, start);
+    if (end < 0) break;
+    var part = raw.slice(start, end), h = part.match(/<h3[^>]*>([\s\S]*?)<\/h3>/);
+    if (h && textOf(h[1]) === title) {
+      part = part.replace(/\n*<!-- wp:paragraph \{"className":"dl-learn-empty"\} -->[\s\S]*?<!-- \/wp:paragraph -->/, '');
+      var close = part.lastIndexOf('</div>');
+      part = part.slice(0, close) + markup + '\n' + part.slice(close);
+      return raw.slice(0, start) + part + raw.slice(end);
+    }
+  }
+  throw new Error('nosection');
+}
+function findLearnPage(ex){
+  return getJSON(API + '?slug=' + encodeURIComponent(ex) + '&_fields=id').then(function(e){
+    if (!e.length) throw new Error('exam');
+    return getJSON(API + '?parent=' + e[0].id + '&slug=learn&_fields=id,link,content').then(function(l){
+      if (!l.length) throw new Error('learn');
+      var doc = new DOMParser().parseFromString(l[0].content.rendered, 'text/html');
+      var secs = Array.prototype.map.call(doc.querySelectorAll('.dl-learn-section'), function(sec){
+        var h = sec.querySelector('h3');
+        return { title: h ? h.textContent.replace(/\s+/g,' ').trim() : '', docs: Array.prototype.map.call(sec.querySelectorAll('.dl-doc > summary'), function(x){ return x.textContent.replace(/^📄\s*/,'').trim(); }) };
+      }).filter(function(x){ return x.title; });
+      return { id: l[0].id, link: l[0].link, sections: secs };
+    });
+  });
+}
+function loadExamOptions(sel, done){
+  getJSON(API + '?slug=learn&parent=0&_fields=id').then(function(hub){
+    return getJSON(API + '?parent=' + hub[0].id + '&per_page=100&orderby=title&order=asc&_fields=slug,title');
+  }).then(function(list){
+    list = list.filter(function(e){return /^[a-z]{2,3}-\d+/i.test(e.slug);});
+    sel.innerHTML = '<option value="">Choose an exam…</option>' + list.map(function(e){return '<option value="'+esc(e.slug)+'">'+esc(e.title.rendered.replace(/<[^>]+>/g,''))+'</option>';}).join('');
+    if (exam) sel.value = exam;
+    done();
+  });
+}
+
+function renderLearnAdmin(){
+  document.title = 'Study materials – Dynamics Lab';
+  document.getElementById('title').textContent = 'Study materials (Learn)';
+  document.getElementById('crumbExam').textContent = 'Study materials';
+  document.getElementById('backTop').textContent = '← Back to Learn';
+  document.getElementById('backTop').href = exam ? examUrl + 'learn/' : 'https://' + SITE + '/learn/';
+  if (!getToken()) {
+    app.innerHTML = '<div class="card"><h2 style="margin-top:0">Sign in to attach files</h2><p class="muted">Only the site administrator can upload documents. Sign in with your WordPress.com account. Under “Authorize access for” choose <b>d365microsoft.wordpress.com</b> and click <b>Approve</b>.</p><button class="btn" id="signin">Sign in with WordPress.com</button></div>';
+    document.getElementById('signin').onclick = function(){ signIn(exam); }; return;
+  }
+  var wantNew = params.get('new') === '1';
+  app.innerHTML = '<div class="card"><div class="nav" style="margin-top:0;align-items:center"><h2 style="margin:0">📎 Attach a PDF</h2><button class="btn ghost" id="signout" style="padding:6px 14px;font-size:13px">Sign out</button></div>'+
+    '<form id="lf" class="adm">'+
+    '<label>Exam<select id="lExam" required><option value="">Loading…</option></select></label>'+
+    '<label>Section (topic)<select id="lSec" required><option value="">Choose an exam first</option></select></label>'+
+    '<div id="newSec" hidden><label>New section title<input type="text" id="lSecT" placeholder="e.g. Cash and bank management"></label>'+
+    '<label>Short description <span class="muted">(optional)</span><input type="text" id="lSecD" placeholder="One sentence about this topic"></label></div>'+
+    '<label>Document title <span class="muted" id="docOpt"></span><input type="text" id="lTitle" placeholder="e.g. General ledger – summary notes"></label>'+
+    '<label>PDF file<input type="file" id="lFile" accept="application/pdf,.pdf" class="filein"></label>'+
+    '<p class="muted" style="font-size:13px;margin:6px 0 0">The PDF is uploaded to your WordPress Media Library and shown in the section. Visitors can read it on the page or download it.</p>'+
+    '<div id="lmsg"></div><button class="btn" id="lSave" type="submit">Upload and attach</button></form></div>'+
+    '<div class="card" style="margin-top:18px"><div class="nav" style="margin-top:0;align-items:center"><h2 style="margin:0" id="lListT">Sections</h2><span><a class="muted" id="lView" target="_blank" rel="noopener" href="#">View Learn page ↗</a> &nbsp; <a class="muted" id="lEdit" target="_blank" rel="noopener" href="#">Open in editor ↗</a></span></div>'+
+    '<div id="lList" class="muted" style="margin-top:12px">Choose an exam.</div></div>';
+  document.getElementById('signout').onclick = signOut;
+  var ex = document.getElementById('lExam'), sec = document.getElementById('lSec'), page = null;
+
+  function syncNew(){
+    var isNew = sec.value === '__new';
+    document.getElementById('newSec').hidden = !isNew;
+    document.getElementById('lSecT').required = isNew;
+    document.getElementById('docOpt').textContent = isNew ? '(optional – leave the file empty to only add the section)' : '';
+    document.getElementById('lSave').textContent = isNew ? 'Save' : 'Upload and attach';
+  }
+  function load(keepSec){
+    var slug = ex.value, list = document.getElementById('lList');
+    if (!slug) { list.textContent = 'Choose an exam.'; sec.innerHTML = '<option value="">Choose an exam first</option>'; page = null; return; }
+    list.textContent = 'Loading…';
+    findLearnPage(slug).then(function(p){
+      page = p;
+      document.getElementById('lView').href = p.link;
+      document.getElementById('lEdit').href = 'https://' + SITE + '/wp-admin/post.php?post=' + p.id + '&action=edit';
+      document.getElementById('lListT').textContent = slug.toUpperCase() + ' – ' + p.sections.length + ' sections';
+      sec.innerHTML = '<option value="">Choose a section…</option>' + p.sections.map(function(s){ return '<option>' + esc(s.title) + '</option>'; }).join('') + '<option value="__new">➕ New section…</option>';
+      if (keepSec) sec.value = keepSec; else if (wantNew) sec.value = '__new';
+      syncNew();
+      list.innerHTML = p.sections.length ? '<ol class="qlist">' + p.sections.map(function(s){
+        return '<li><b>' + esc(s.title) + '</b><br><span class="muted">' + (s.docs.length ? s.docs.map(function(d){ return '📄 ' + esc(d); }).join('<br>') : 'No documents yet') + '</span></li>';
+      }).join('') + '</ol>' : 'No sections yet. Add the first one with “➕ New section…”.';
+    }).catch(function(){ list.textContent = 'This exam has no Learn page yet.'; page = null; });
+  }
+  loadExamOptions(ex, function(){ load(); });
+  ex.onchange = function(){ exam = ex.value; history.replaceState(null,'',location.pathname+'?admin=learn&exam='+exam); load(); };
+  sec.onchange = syncNew;
+
+  document.getElementById('lf').onsubmit = function(ev){
+    ev.preventDefault();
+    var msg = document.getElementById('lmsg'), btn = document.getElementById('lSave');
+    var file = document.getElementById('lFile').files[0], isNew = sec.value === '__new';
+    var title = document.getElementById('lTitle').value.trim();
+    var secTitle = isNew ? document.getElementById('lSecT').value.trim() : sec.value;
+    if (!page) { msg.innerHTML = '<p class="err">Choose an exam.</p>'; return; }
+    if (!secTitle) { msg.innerHTML = '<p class="err">Choose a section or write the new section title.</p>'; return; }
+    if (isNew && page.sections.some(function(s){ return s.title.toLowerCase() === secTitle.toLowerCase(); })) { msg.innerHTML = '<p class="err">A section with this title already exists.</p>'; return; }
+    if (!file && !isNew) { msg.innerHTML = '<p class="err">Choose a PDF file.</p>'; return; }
+    if (file && !/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { msg.innerHTML = '<p class="err">Only PDF files can be attached.</p>'; return; }
+    if (file && !title) title = file.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ').trim();
+    btn.disabled = true;
+    var slug = ex.value, base = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE;
+    var up = Promise.resolve(null);
+    if (file) {
+      msg.innerHTML = '<p class="muted">Uploading the PDF… (' + Math.ceil(file.size/1024) + ' KB)</p>';
+      var fd = new FormData(); fd.append('file', file, file.name); fd.append('title', title);
+      up = authFetch(base + '/media', { method: 'POST', body: fd });
+    }
+    up.then(function(media){
+      msg.innerHTML = '<p class="muted">Adding it to the Learn page…</p>';
+      var markup = media ? docMarkup(title, media.source_url, media.id) : '';
+      return authFetch(base + '/pages/' + page.id + '?context=edit&_fields=content').then(function(d){
+        var raw = d.content.raw;
+        var out = isNew ? insertIntoGroup(raw, 'dl-learn-materials', sectionMarkup(secTitle, document.getElementById('lSecD').value.trim(), markup))
+                        : addToSection(raw, secTitle, markup);
+        return authFetch(base + '/pages/' + page.id, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({content: out}) });
+      });
+    }).then(function(){
+      msg.innerHTML = '<p class="ok">✓ Saved to ' + esc(slug.toUpperCase()) + ' → ' + esc(secTitle) + '. <a href="' + esc(page.link) + '" target="_blank" rel="noopener">View the Learn page ↗</a></p>';
+      document.getElementById('lf').reset(); ex.value = slug; btn.disabled = false; wantNew = false; load(secTitle);
+    }).catch(function(e){
+      btn.disabled = false;
+      if (e.message === 'auth' || e.message === 'site') { msg.innerHTML = '<p class="err">' + (e.message === 'site' ? 'You signed in for a different site.' : 'Your sign-in has expired.') + ' <a href="#" id="re">Sign in again</a> (choose d365microsoft.wordpress.com). You will need to choose the file again.</p>'; document.getElementById('re').onclick = function(ev2){ ev2.preventDefault(); signIn(slug); }; }
+      else if (e.message === 'nobank') msg.innerHTML = '<p class="err">This Learn page has no “Study materials” part.</p>';
+      else if (e.message === 'nosection') msg.innerHTML = '<p class="err">The section was not found – maybe it was renamed. Refresh the page and try again.</p>';
+      else msg.innerHTML = '<p class="err">Saving failed (' + esc(e.message) + '). Please try again.</p>';
+    });
+  };
+}
+
 // ---------- start ----------
 document.getElementById('crumbExam').textContent = exam ? exam.toUpperCase() : 'Exam';
 document.getElementById('crumbExam').href = examUrl;
 document.getElementById('backTop').href = quizUrl;
 
+if (params.get('admin') === 'learn') { renderLearnAdmin(); return; }
 if (params.get('admin') === '1') { if (!exam) { document.getElementById('backTop').href = 'https://' + SITE + '/manage-exams/'; } renderAdmin(); return; }
 
 if (!exam) { app.innerHTML = '<div class="err">No exam selected. <a href="https://'+SITE+'/learn/">Choose an exam</a>.</div>'; return; }
