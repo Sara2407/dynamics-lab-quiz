@@ -392,7 +392,7 @@ function renderAdmin(){
   document.getElementById('signout').onclick = signOut;
 
   var sel = document.getElementById('fExam'), current = null;
-  getJSON(API + '?slug=learn&_fields=id').then(function(hub){
+  getJSON(API + '?slug=learn&parent=0&_fields=id').then(function(hub){
     return getJSON(API + '?parent=' + hub[0].id + '&per_page=100&orderby=title&order=asc&_fields=slug,title');
   }).then(function(list){
     list = list.filter(function(e){return /^[a-z]{2,3}-\d+/i.test(e.slug);});
