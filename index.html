@@ -139,6 +139,7 @@ var API = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE + '/pages';
 var CLIENT_ID = '151346';
 var REDIRECT = 'https://sara2407.github.io/dynamics-lab-quiz/';
 var TOKEN_KEY = 'dl-quiz-admin-token';
+var BANK_PW = 'dlq-bank-7f3k9x';   // password of the "Quiz bank – CODE" pages (hides answers from visitors)
 
 // Back from WordPress.com sign-in: keep the token, go back to the admin form
 if (location.hash.indexOf('access_token=') > -1) {
@@ -197,10 +198,9 @@ function loadBank(){
     if (!ex.length) throw new Error('exam');
     document.getElementById('title').textContent = ex[0].title.rendered.replace(/<[^>]+>/g,'') + ' practice quiz';
     document.title = ex[0].title.rendered.replace(/<[^>]+>/g,'') + ' Practice Quiz – Dynamics Lab';
-    return getJSON(API + '?parent=' + ex[0].id + '&slug=quiz&_fields=content');
+    return getJSON(API + '?slug=quiz-bank-' + encodeURIComponent(exam) + '&password=' + BANK_PW + '&_fields=content');
   }).then(function(q){
-    if (!q.length) throw new Error('quiz');
-    return parseBank(q[0].content.rendered);
+    return q.length ? parseBank(q[0].content.rendered) : [];
   });
 }
 
@@ -432,14 +432,14 @@ function insertIntoGroup(raw, cls, markup){
 }
 // Put the new question at the end of the "Question bank" group
 function insertIntoBank(raw, markup){ return insertIntoGroup(raw, 'dl-quiz-bank', markup); }
+// The question bank of each exam is a password-protected page "Quiz bank – CODE" (slug quiz-bank-code)
 function findQuizPage(ex){
-  return getJSON(API + '?slug=' + encodeURIComponent(ex) + '&_fields=id,title').then(function(e){
-    if (!e.length) throw new Error('exam');
-    return getJSON(API + '?parent=' + e[0].id + '&slug=quiz&_fields=id,content').then(function(q){
-      if (!q.length) throw new Error('quiz');
-      return {id: q[0].id, bank: parseBank(q[0].content.rendered)};
-    });
+  return getJSON(API + '?slug=quiz-bank-' + encodeURIComponent(ex) + '&password=' + BANK_PW + '&_fields=id,content&_=' + Date.now()).then(function(q){
+    return q.length ? {id: q[0].id, bank: parseBank(q[0].content.rendered)} : {id: null, bank: []};
   });
+}
+function newBankContent(ex){
+  return '<!-- wp:group {"className":"dl-quiz-bank","layout":{"type":"constrained"}} -->\n<div class="wp-block-group dl-quiz-bank"><!-- wp:heading -->\n<h2 class="wp-block-heading">Question bank – ' + blockEsc(ex.toUpperCase()) + '</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>This page is password-protected, so visitors cannot see the answers. The quiz app reads the questions from here. Add questions with the “+ Add question” form. Do not change the page password or the slug.</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:group -->';
 }
 
 function renderAdmin(){
@@ -484,9 +484,9 @@ function renderAdmin(){
     box.textContent = 'Loading…';
     findQuizPage(ex).then(function(p){
       current = p;
-      document.getElementById('editLink').href = 'https://' + SITE + '/wp-admin/post.php?post=' + p.id + '&action=edit';
+      document.getElementById('editLink').href = p.id ? 'https://' + SITE + '/wp-admin/post.php?post=' + p.id + '&action=edit' : '#';
       drawList();
-    }).catch(function(){ box.textContent = 'This exam has no Quiz page yet.'; current = null; });
+    }).catch(function(){ box.textContent = 'The questions could not be loaded.'; current = null; });
   }
   function drawList(){
     var box = document.getElementById('qlist'), s = document.getElementById('fSearch').value.toLowerCase();
@@ -511,7 +511,10 @@ function renderAdmin(){
     var btn = document.getElementById('saveBtn'); btn.disabled = true; msg.innerHTML = '<p class="muted">Saving…</p>';
     var markup = questionMarkup(q, opts, corr.join(', '), document.getElementById('fE').value.trim());
     findQuizPage(ex).then(function(p){
-      var url = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE + '/pages/' + p.id;
+      var base = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE + '/pages';
+      if (!p.id) return authFetch(base, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        title: 'Quiz bank – ' + ex.toUpperCase(), slug: 'quiz-bank-' + ex, status: 'publish', password: BANK_PW, content: insertIntoBank(newBankContent(ex), markup)})});
+      var url = base + '/' + p.id;
       return authFetch(url + '?context=edit&_fields=content').then(function(d){
         var raw = d.content.raw;
         return authFetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content: insertIntoBank(raw, markup)})});
@@ -524,7 +527,7 @@ function renderAdmin(){
       btn.disabled = false;
       if (e.message === 'auth') { msg.innerHTML = '<p class="err">Your sign-in has expired. <a href="#" id="re">Sign in again</a> (the question is kept in the form).</p>'; document.getElementById('re').onclick=function(ev){ev.preventDefault(); signIn(ex);}; }
       else if (e.message === 'site') { msg.innerHTML = '<p class="err">You signed in for a different site. <a href="#" id="re">Sign in again</a> and under “Authorize access for” choose <b>d365microsoft.wordpress.com</b>.</p>'; document.getElementById('re').onclick=function(ev){ev.preventDefault(); signIn(ex);}; }
-      else if (e.message === 'nobank') msg.innerHTML = '<p class="err">The Quiz page of this exam has no “Question bank” section.</p>';
+      else if (e.message === 'nobank') msg.innerHTML = '<p class="err">The “Quiz bank” page of this exam has no question bank section.</p>';
       else msg.innerHTML = '<p class="err">Saving failed (' + esc(e.message) + '). Please try again.</p>';
     });
   };
