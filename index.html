@@ -90,6 +90,18 @@ p.ok{background:var(--okbg);color:var(--ok);border-radius:10px;padding:10px 14px
 p.err{background:var(--badbg);color:var(--bad);border-radius:10px;padding:10px 14px}
 .srch{margin:14px 0 6px}
 .qlist{padding-left:22px;color:var(--ink)} .qlist li{margin:10px 0;font-size:15px}
+.opt.right{border-color:#5fbf8f;background:var(--okbg)}
+.opt.wrong{border-color:#e59a92;background:var(--badbg)}
+.fb{border-radius:12px;padding:12px 16px;margin-top:6px;font-size:15px}
+.fb.ok{background:var(--okbg);color:var(--ok)} .fb.bad{background:var(--badbg);color:var(--bad)}
+.fb div{color:var(--ink)}
+.grid button.ok{background:var(--okbg);border-color:#5fbf8f;color:var(--ok)}
+.grid button.no{background:var(--badbg);border-color:#e59a92;color:var(--bad)}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+.mode{border:1.5px solid var(--line);border-radius:14px;padding:18px}
+.mode h3{margin:0 0 4px}
+.mode .facts{margin:10px 0 8px}
+@media (max-width:640px){.modes{grid-template-columns:1fr}}
 dialog{border:0;border-radius:16px;padding:22px;max-width:420px;width:calc(100% - 32px)}
 dialog::backdrop{background:rgba(10,42,92,.35)}
 @media (max-width:560px){.hero h1{font-size:23px}.qtext{font-size:17px}.progress{width:110px}.card{padding:16px}}
@@ -141,13 +153,15 @@ var exam = (params.get('exam') || '').toLowerCase().replace(/[^a-z0-9-]/g,'');
 var app = document.getElementById('app');
 var examUrl = 'https://' + SITE + '/learn/' + exam + '/';
 var quizUrl = examUrl + 'quiz/';
-var KEY = 'dl-quiz-' + exam;
+var mode = ({exam:'exam', practice:'practice'})[params.get('mode')] || null;
 var bank = [], state = null, tick = null, filter = 'all';
+function key(){ return 'dl-quiz-' + exam + (mode === 'practice' ? '-practice' : ''); }
 
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function save(){try{localStorage.setItem(KEY, JSON.stringify(state));}catch(e){}}
-function load(){try{return JSON.parse(localStorage.getItem(KEY));}catch(e){return null;}}
-function clear(){try{localStorage.removeItem(KEY);}catch(e){}}
+function save(){try{localStorage.setItem(key(), JSON.stringify(state));}catch(e){}}
+function load(){try{return JSON.parse(localStorage.getItem(key()));}catch(e){return null;}}
+function clear(){try{localStorage.removeItem(key());}catch(e){}}
+function setUrl(){ history.replaceState(null,'',location.pathname+'?exam='+exam+'&mode='+mode); }
 
 // ---------- read the question bank from the WordPress Quiz page ----------
 function getJSON(url){return fetch(url,{credentials:'omit'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});}
@@ -190,20 +204,23 @@ function loadBank(){
 // ---------- quiz flow ----------
 function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
 
-function startNew(){
+function startNew(m){
+  mode = m || mode || 'exam';
   var pick = shuffle(bank).slice(0, QUESTIONS_PER_QUIZ);
   state = {
+    mode: mode,
+    checked: pick.map(function(){return false;}),
     started: Date.now(),
     ends: Date.now() + TIME_LIMIT_MIN*60000,
     qs: pick.map(function(q){return {id:q.id,q:q.q,o:q.o,c:q.c,e:q.e};}),
     ans: pick.map(function(){return [];}),
     cur: 0, finished: false, timedOut: false, finishedAt: null
   };
-  save(); renderQuiz();
+  save(); setUrl(); renderQuiz(); window.scrollTo(0,0);
 }
 
 // Leaving the page ends the quiz; the next quiz starts from the beginning
-function active(){ return state && !state.finished && params.get('admin') !== '1'; }
+function active(){ return state && !state.finished && state.mode !== 'practice' && params.get('admin') !== '1'; }
 window.addEventListener('beforeunload', function(e){ if (active()) { e.preventDefault(); e.returnValue = ''; } });
 window.addEventListener('pagehide', function(){
   if (active()) { state.finished = true; state.left = true; state.finishedAt = Math.min(Date.now(), state.ends); save(); }
@@ -233,31 +250,47 @@ function answered(i){return state.ans[i].length>0;}
 function renderQuiz(){
   var i = state.cur, q = state.qs[i], n = state.qs.length;
   var multi = q.c.length > 1;
-  var done = state.ans.filter(function(a){return a.length;}).length;
+  var isP = state.mode === 'practice';
+  if (isP && !state.checked) state.checked = state.qs.map(function(){return false;});
+  var locked = isP && state.checked[i];
+  var done = isP ? state.checked.filter(Boolean).length : state.ans.filter(function(a){return a.length;}).length;
   var h = '<div class="bar"><div><div class="qnum">Question '+(i+1)+' of '+n+'</div>'+
     '<div class="progress"><span style="width:'+Math.round(done/n*100)+'%"></span></div></div>'+
-    '<div class="center"><div class="muted" style="font-size:12px">Time left</div><div class="timer" id="timer">--:--</div></div>'+
+    (isP ? '<div class="center"><div class="muted" style="font-size:12px">Mode</div><div class="timer" style="font:700 16px system-ui,sans-serif">📘 Practice</div></div>'
+         : '<div class="center"><div class="muted" style="font-size:12px">Time left</div><div class="timer" id="timer">--:--</div></div>')+
     '<button class="btn" id="finishBtn">Finish</button></div>';
   h += '<div class="card"><div class="qtext">'+esc(q.q)+'</div>';
   if (multi) h += '<div class="multi">Choose '+q.c.length+' answers.</div>';
   q.o.forEach(function(o, k){
     var sel = state.ans[i].indexOf(k) > -1;
-    h += '<label class="opt'+(sel?' sel':'')+'"><input type="'+(multi?'checkbox':'radio')+'" name="o" value="'+k+'"'+(sel?' checked':'')+'>'+
+    var fb = locked ? (q.c.indexOf(k) > -1 ? ' right' : (sel ? ' wrong' : '')) : '';
+    h += '<label class="opt'+(sel?' sel':'')+fb+'"><input type="'+(multi?'checkbox':'radio')+'" name="o" value="'+k+'"'+(sel?' checked':'')+(locked?' disabled':'')+'>'+
       '<b>'+String.fromCharCode(65+k)+'.</b><span>'+esc(o)+'</span></label>';
   });
+  if (isP) {
+    if (locked) {
+      var ok = isRight(i);
+      h += '<div class="fb '+(ok?'ok':'bad')+'"><b>'+(ok?'✓ Correct!':'✗ Not quite.')+'</b>'+(ok?'':' Correct answer: '+q.c.map(function(c){return String.fromCharCode(65+c);}).join(', ')+'.')+
+        (q.e?'<div style="margin-top:6px">'+esc(q.e)+'</div>':'')+'</div>';
+    } else {
+      h += '<button class="btn" id="check" style="margin-top:6px"'+(state.ans[i].length?'':' disabled')+'>Check answer</button>';
+    }
+  }
   h += '<div class="nav"><button class="btn ghost" id="prev"'+(i===0?' disabled':'')+'>← Previous</button>'+
     (i<n-1 ? '<button class="btn" id="next">Next →</button>' : '<button class="btn" id="fin2">Finish quiz</button>')+'</div>';
-  h += '<p class="muted" style="font-size:13px;margin:14px 0 0">⚠️ If you leave or refresh this page, the quiz ends and you will need to start a new one.</p>';
-  h += '<div class="gridwrap"><button class="arrow" id="gl" aria-label="Scroll left">‹</button><div class="grid" id="grid">'+state.qs.map(function(_,k){return '<button data-k="'+k+'" class="'+(answered(k)?'done ':'')+(k===i?'cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>';}).join('')+'</div><button class="arrow" id="gr" aria-label="Scroll right">›</button></div></div>';
+  h += '<p class="muted" style="font-size:13px;margin:14px 0 0">'+(isP ? '💾 Your progress is saved – you can leave and continue later.' : '⚠️ If you leave or refresh this page, the quiz ends and you will need to start a new one.')+'</p>';
+  h += '<div class="gridwrap"><button class="arrow" id="gl" aria-label="Scroll left">‹</button><div class="grid" id="grid">'+state.qs.map(function(_,k){var st = (isP && state.checked[k]) ? (isRight(k)?'ok ':'no ') : (answered(k)?'done ':''); return '<button data-k="'+k+'" class="'+st+(k===i?'cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>';}).join('')+'</div><button class="arrow" id="gr" aria-label="Scroll right">›</button></div></div>';
   app.innerHTML = h;
 
   app.querySelectorAll('input[name=o]').forEach(function(inp){
     inp.addEventListener('change', function(){
+      if (locked) return;
       var picked = Array.prototype.filter.call(app.querySelectorAll('input[name=o]'), function(x){return x.checked;}).map(function(x){return +x.value;});
       state.ans[i] = picked; save(); renderQuiz();
     });
   });
   var go = function(k){state.cur=k;save();renderQuiz();window.scrollTo(0,0);};
+  var chk = document.getElementById('check'); if (chk) chk.onclick = function(){ state.checked[i] = true; save(); renderQuiz(); };
   var prev=document.getElementById('prev'); if(prev) prev.onclick=function(){go(i-1);};
   var next=document.getElementById('next'); if(next) next.onclick=function(){go(i+1);};
   app.querySelectorAll('.grid button').forEach(function(b){b.onclick=function(){go(+b.dataset.k);};});
@@ -270,13 +303,13 @@ function renderQuiz(){
   gl.onclick = function(){ grid.scrollBy({left: -grid.clientWidth * 0.8}); };
   gr.onclick = function(){ grid.scrollBy({left: grid.clientWidth * 0.8}); };
   var ask=function(){
-    var left = n - state.ans.filter(function(a){return a.length;}).length;
-    document.getElementById('confirmText').textContent = left ? ('You have '+left+' unanswered question'+(left>1?'s':'')+'. Unanswered questions count as incorrect.') : 'You have answered all questions.';
+    var left = n - (isP ? state.checked.filter(Boolean).length : state.ans.filter(function(a){return a.length;}).length);
+    document.getElementById('confirmText').textContent = left ? ('You have '+left+' '+(isP?'unchecked':'unanswered')+' question'+(left>1?'s':'')+'. They count as incorrect.') : 'You have answered all questions.';
     document.getElementById('confirm').showModal();
   };
   document.getElementById('finishBtn').onclick=ask;
   var f2=document.getElementById('fin2'); if(f2) f2.onclick=ask;
-  startTimer();
+  if (isP) clearInterval(tick); else startTimer();
 }
 
 function isRight(k){var a=state.ans[k].slice().sort(),c=state.qs[k].c;return a.length===c.length&&a.every(function(v,j){return v===c[j];});}
@@ -289,10 +322,11 @@ function renderResults(){
   var col = pct>=70 ? 'var(--ok)' : 'var(--bad)';
   var h = '<div class="card"><div class="score">'+
     '<div class="ring" style="background:conic-gradient('+col+' '+pct*3.6+'deg,#e7edf5 0)"><span>'+pct+'%</span></div>'+
-    '<div><h2 style="margin:0 0 6px">'+(state.timedOut?'⏰ Time is up':(state.left?'🚪 Quiz ended – you left the quiz':'Quiz finished'))+'</h2>'+
+    '<div><h2 style="margin:0 0 6px">'+(state.timedOut?'⏰ Time is up':(state.left?'🚪 Quiz ended – you left the quiz':(state.mode==='practice'?'Practice finished':'Quiz finished')))+'</h2>'+
     '<div><span class="pill ok">✓ '+right+' correct</span> <span class="pill bad">✗ '+(n-right)+' incorrect</span></div>'+
-    '<p class="muted" style="margin:10px 0 0">'+right+' of '+n+' questions correct · time used '+fmt(used)+'</p></div></div>'+
-    '<div class="nav" style="justify-content:flex-start"><button class="btn" id="again">Start a new quiz</button><a class="btn ghost" href="'+quizUrl+'">Back to '+esc(exam.toUpperCase())+'</a></div>'+
+    '<p class="muted" style="margin:10px 0 0">'+right+' of '+n+' questions correct'+(state.mode==='practice'?' · 📘 Practice mode':' · 🎯 Exam mode · time used '+fmt(used))+'</p></div></div>'+
+    '<div class="nav" style="justify-content:flex-start"><button class="btn" id="again">Start a new '+(state.mode==='practice'?'practice':'exam')+'</button>'+
+    '<button class="btn ghost" id="other">Try '+(state.mode==='practice'?'🎯 Exam':'📘 Practice')+' mode</button><a class="btn ghost" href="'+quizUrl+'">Back to '+esc(exam.toUpperCase())+'</a></div>'+
     '<div class="note">ℹ️ This quiz is only for checking your knowledge level. The questions are not taken from the real exam.</div></div>';
   h += '<div class="tabs" role="tablist">'+
     ['all','right','wrong'].map(function(f){var lbl={all:'All ('+n+')',right:'Correct ('+right+')',wrong:'Incorrect ('+(n-right)+')'}[f];return '<button data-f="'+f+'" class="'+(filter===f?'on':'')+'">'+lbl+'</button>';}).join('')+'</div>';
@@ -310,17 +344,23 @@ function renderResults(){
   });
   app.innerHTML = h;
   app.querySelectorAll('.tabs button').forEach(function(b){b.onclick=function(){filter=b.dataset.f;renderResults();};});
-  document.getElementById('again').onclick=function(){clear();state=null;startNew();window.scrollTo(0,0);};
+  document.getElementById('again').onclick=function(){clear();state=null;startNew(mode);};
+  document.getElementById('other').onclick=function(){var m = mode==='practice'?'exam':'practice'; mode=m; var sv=load(); if (sv && !sv.finished && m==='practice') { state=sv; setUrl(); renderQuiz(); } else { clear(); state=null; startNew(m); } };
 }
 
 function renderIntro(){
   var n = Math.min(QUESTIONS_PER_QUIZ, bank.length);
-  app.innerHTML = '<div class="card"><h2 style="margin-top:0">Ready to test yourself?</h2>'+
-    '<ul class="facts"><li>📝 '+n+' random questions</li><li>⏱️ '+TIME_LIMIT_MIN+' minutes</li><li>📊 Results at the end</li></ul>'+
-    '<p class="muted">Each time you start, you get a new random set of questions. The timer starts when you click <b>Start quiz</b>. When the time runs out, or if you leave this page, the quiz ends automatically and you see your results. You can’t change your answers after the quiz ends.</p>'+
-    '<button class="btn" id="go">Start quiz</button>'+
-    '<div class="note">ℹ️ This quiz is only for checking your knowledge level. The questions are not taken from the real exam.</div></div>';
-  document.getElementById('go').onclick=startNew;
+  app.innerHTML = '<div class="card"><h2 style="margin-top:0">Choose how you want to practice</h2>'+
+    '<div class="modes">'+
+    '<div class="mode"><h3>🎯 Exam mode</h3><ul class="facts"><li>📝 '+n+' random questions</li><li>⏱️ '+TIME_LIMIT_MIN+' minutes</li><li>📊 Results at the end</li></ul>'+
+    '<p class="muted">Like the real exam. The timer starts when you click Start. When the time runs out, or if you leave this page, the quiz ends and you see your results.</p>'+
+    '<button class="btn" id="goExam">Start exam mode</button></div>'+
+    '<div class="mode"><h3>📘 Practice mode</h3><ul class="facts"><li>📝 '+n+' random questions</li><li>♾️ No timer</li><li>✅ Answer after each question</li></ul>'+
+    '<p class="muted">Learn at your own pace. Check each answer and read the explanation. Your progress is saved, so you can leave and continue later.</p>'+
+    '<button class="btn ghost" id="goPractice">Start practice mode</button></div>'+
+    '</div><div class="note">ℹ️ This quiz is only for checking your knowledge level. The questions are not taken from the real exam.</div></div>';
+  document.getElementById('goExam').onclick=function(){ mode='exam'; clear(); startNew('exam'); };
+  document.getElementById('goPractice').onclick=function(){ mode='practice'; var sv=load(); if (sv && !sv.finished) { state=sv; setUrl(); renderQuiz(); } else { clear(); startNew('practice'); } };
 }
 
 document.getElementById('cNo').onclick=function(){document.getElementById('confirm').close();};
@@ -488,19 +528,19 @@ if (!exam) { app.innerHTML = '<div class="err">No exam selected. <a href="https:
 
 loadBank().then(function(b){
   bank = b;
-  var saved = load();
   var wantsNew = params.get('start') === '1';
+  if (!mode && wantsNew) mode = 'exam';
+  if (!bank.length) { app.innerHTML = '<div class="card center"><h2>Coming soon</h2><p class="muted">There are no quiz questions for this exam yet. Please check back later.</p><a class="btn ghost" href="'+quizUrl+'">Back</a></div>'; return; }
+  if (!mode) { renderIntro(); return; }
+  var saved = load();
   if (saved && saved.finished && wantsNew) { clear(); saved = null; }
   if (saved && saved.qs && saved.qs.length) {
-    if (wantsNew) history.replaceState(null,'',location.pathname+'?exam='+exam);
-    state = saved;
+    state = saved; state.mode = state.mode || mode; setUrl();
     if (state.finished) { renderResults(); return; }
-    if (Date.now() >= state.ends) { finish(true); return; }
+    if (state.mode !== 'practice' && Date.now() >= state.ends) { finish(true); return; }
     renderQuiz(); return;
   }
-  if (!bank.length) { app.innerHTML = '<div class="card center"><h2>Coming soon</h2><p class="muted">There are no quiz questions for this exam yet. Please check back later.</p><a class="btn ghost" href="'+quizUrl+'">Back</a></div>'; return; }
-  if (wantsNew) { history.replaceState(null,'',location.pathname+'?exam='+exam); startNew(); }
-  else renderIntro();
+  if (wantsNew) startNew(mode); else renderIntro();
 }).catch(function(){
   app.innerHTML = '<div class="err">The quiz could not be loaded. Please refresh the page or try again later. <a href="'+quizUrl+'">Back to the exam</a></div>';
 });
