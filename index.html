@@ -71,6 +71,18 @@ main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
 .res .exp{font-size:14px;color:var(--muted);margin-top:8px}
 .center{text-align:center}
 .err{background:var(--badbg);color:var(--bad);border-radius:12px;padding:14px 16px}
+.adm label{display:block;font-weight:600;margin:14px 0 4px}
+.adm textarea,.adm select,.adm input[type=text],.srch{width:100%;font:inherit;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);margin-top:6px}
+.adm .lbl{font-weight:600;margin:16px 0 4px}
+.adm .ans{display:flex;align-items:center;gap:10px;margin:8px 0}
+.adm .ans input[type=text]{margin:0}
+.adm .ck{display:flex;align-items:center;gap:4px;margin:0;font-weight:500;font-size:13px;color:var(--muted);white-space:nowrap}
+.adm .ck input{accent-color:var(--ok);width:18px;height:18px}
+.adm .btn{margin-top:16px}
+p.ok{background:var(--okbg);color:var(--ok);border-radius:10px;padding:10px 14px;font-weight:600}
+p.err{background:var(--badbg);color:var(--bad);border-radius:10px;padding:10px 14px}
+.srch{margin:14px 0 6px}
+.qlist{padding-left:22px;color:var(--ink)} .qlist li{margin:10px 0;font-size:15px}
 dialog{border:0;border-radius:16px;padding:22px;max-width:420px;width:calc(100% - 32px)}
 dialog::backdrop{background:rgba(10,42,92,.35)}
 @media (max-width:560px){.hero h1{font-size:23px}.qtext{font-size:17px}.progress{width:110px}.card{padding:16px}}
@@ -102,6 +114,20 @@ var SITE = 'd365microsoft.wordpress.com';
 var QUESTIONS_PER_QUIZ = 30;
 var TIME_LIMIT_MIN = 60;
 var API = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE + '/pages';
+
+// WordPress.com app (developer.wordpress.com/apps) used only by the admin form
+var CLIENT_ID = '151346';
+var REDIRECT = 'https://sara2407.github.io/dynamics-lab-quiz/';
+var TOKEN_KEY = 'dl-quiz-admin-token';
+
+// Back from WordPress.com sign-in: keep the token, go back to the admin form
+if (location.hash.indexOf('access_token=') > -1) {
+  var h = new URLSearchParams(location.hash.slice(1));
+  try { localStorage.setItem(TOKEN_KEY, JSON.stringify({t: h.get('access_token'), exp: Date.now() + (parseInt(h.get('expires_in')||'1209600',10)*1000) - 60000})); } catch(e) {}
+  history.replaceState(null, '', location.pathname + '?admin=1&exam=' + encodeURIComponent((h.get('state')||'').replace(/[^a-z0-9-]/gi,'')));
+} else if (location.hash.indexOf('error=') > -1) {
+  history.replaceState(null, '', location.pathname + '?admin=1');
+}
 
 var params = new URLSearchParams(location.search);
 var exam = (params.get('exam') || '').toLowerCase().replace(/[^a-z0-9-]/g,'');
@@ -277,10 +303,162 @@ function renderIntro(){
 document.getElementById('cNo').onclick=function(){document.getElementById('confirm').close();};
 document.getElementById('cYes').onclick=function(){document.getElementById('confirm').close();finish(false);};
 
+// ---------- admin: add questions ----------
+function getToken(){try{var t=JSON.parse(localStorage.getItem(TOKEN_KEY));if(t&&t.t&&t.exp>Date.now())return t.t;}catch(e){}return null;}
+var DRAFT_KEY = 'dl-quiz-admin-draft';
+function saveDraft(){
+  var f = document.getElementById('fQ'); if (!f) return;
+  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({q:f.value, e:document.getElementById('fE').value,
+    a:Array.prototype.map.call(document.querySelectorAll('.fA'),function(x){return x.value;}),
+    c:Array.prototype.map.call(document.querySelectorAll('.fC'),function(x){return x.checked;})})); } catch(e) {}
+}
+function restoreDraft(){
+  try { var d = JSON.parse(sessionStorage.getItem(DRAFT_KEY)); sessionStorage.removeItem(DRAFT_KEY); if (!d) return;
+    document.getElementById('fQ').value = d.q||''; document.getElementById('fE').value = d.e||'';
+    document.querySelectorAll('.fA').forEach(function(x,i){x.value=(d.a||[])[i]||'';});
+    document.querySelectorAll('.fC').forEach(function(x,i){x.checked=!!(d.c||[])[i];});
+  } catch(e) {}
+}
+function signIn(ex){
+  saveDraft();
+  location.href = 'https://public-api.wordpress.com/oauth2/authorize?client_id=' + encodeURIComponent(CLIENT_ID) +
+    '&redirect_uri=' + encodeURIComponent(REDIRECT) + '&response_type=token&blog=' + encodeURIComponent(SITE) + '&state=' + encodeURIComponent(ex||'');
+}
+function signOut(){try{localStorage.removeItem(TOKEN_KEY);}catch(e){} renderAdmin();}
+function authFetch(url, opts){
+  opts = opts || {}; opts.headers = opts.headers || {};
+  opts.headers['Authorization'] = 'Bearer ' + getToken();
+  return fetch(url, opts).then(function(r){
+    if (r.status === 401 || r.status === 403) { try{localStorage.removeItem(TOKEN_KEY);}catch(e){} throw new Error('auth'); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  });
+}
+function blockEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/--/g,'&#45;&#45;');}
+function questionMarkup(q, opts, correct, exp){
+  var li = opts.map(function(o,i){return '<!-- wp:list-item -->\n<li>'+String.fromCharCode(65+i)+'. '+blockEsc(o)+'</li>\n<!-- /wp:list-item -->';}).join('\n\n');
+  return '\n\n<!-- wp:group {"className":"dl-qq","layout":{"type":"constrained"}} -->\n<div class="wp-block-group dl-qq"><!-- wp:heading {"level":3} -->\n<h3 class="wp-block-heading">'+blockEsc(q)+'</h3>\n<!-- /wp:heading -->\n\n'+
+    '<!-- wp:list -->\n<ul class="wp-block-list">'+li+'</ul>\n<!-- /wp:list -->\n\n'+
+    '<!-- wp:paragraph -->\n<p>Correct: '+correct+'</p>\n<!-- /wp:paragraph -->\n\n'+
+    '<!-- wp:paragraph -->\n<p>Explanation: '+blockEsc(exp||'')+'</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:group -->';
+}
+// Put the new question at the end of the "Question bank" group
+function insertIntoBank(raw, markup){
+  var start = raw.indexOf('"className":"dl-quiz-bank"');
+  if (start < 0) throw new Error('nobank');
+  start = raw.lastIndexOf('<!--', start);
+  var re = /<!--\s+(\/)?wp:[a-z0-9\/-]+(?:\s+\{[\s\S]*?\})?\s+(\/)?-->/g; re.lastIndex = start;
+  var depth = 0, m;
+  while ((m = re.exec(raw))) {
+    if (m[2]) continue;           // self-closing block
+    if (m[1]) { depth--; if (depth === 0) { var close = raw.lastIndexOf('</div>', m.index); return raw.slice(0, close) + markup + '\n' + raw.slice(close); } }
+    else depth++;
+  }
+  throw new Error('nobank');
+}
+function findQuizPage(ex){
+  return getJSON(API + '?slug=' + encodeURIComponent(ex) + '&_fields=id,title').then(function(e){
+    if (!e.length) throw new Error('exam');
+    return getJSON(API + '?parent=' + e[0].id + '&slug=quiz&_fields=id,content').then(function(q){
+      if (!q.length) throw new Error('quiz');
+      return {id: q[0].id, bank: parseBank(q[0].content.rendered)};
+    });
+  });
+}
+
+function renderAdmin(){
+  document.title = 'Add quiz questions – Dynamics Lab';
+  document.getElementById('title').textContent = 'Add quiz questions';
+  document.getElementById('crumbExam').textContent = 'Quiz questions';
+  var token = getToken();
+  var h = '<div class="card">';
+  if (!token) {
+    h += '<h2 style="margin-top:0">Sign in to add questions</h2><p class="muted">Only the site administrator can add questions. Sign in with your WordPress.com account (the first time, click <b>Approve</b>).</p>'+
+      '<button class="btn" id="signin">Sign in with WordPress.com</button></div>';
+    app.innerHTML = h; document.getElementById('signin').onclick = function(){ signIn(exam); }; return;
+  }
+  h += '<div class="nav" style="margin-top:0;align-items:center"><h2 style="margin:0">New question</h2><button class="btn ghost" id="signout" style="padding:6px 14px;font-size:13px">Sign out</button></div>'+
+    '<form id="qf" class="adm">'+
+    '<label>Exam<select id="fExam" required><option value="">Loading…</option></select></label>'+
+    '<label>Question<textarea id="fQ" rows="3" required placeholder="Write the question here?"></textarea></label>'+
+    '<div class="lbl">Answers <span class="muted">(tick the correct answer – tick two for “Choose two”)</span></div>';
+  for (var i=0;i<4;i++) h += '<div class="ans"><label class="ck" title="Correct answer"><input type="checkbox" class="fC" value="'+i+'"> correct</label><b>'+String.fromCharCode(65+i)+'.</b><input type="text" class="fA" required placeholder="Answer '+String.fromCharCode(65+i)+'"></div>';
+  h += '<label>Explanation <span class="muted">(shown in the results)</span><textarea id="fE" rows="2" placeholder="Why this answer is correct."></textarea></label>'+
+    '<div id="msg"></div><button class="btn" id="saveBtn" type="submit">Save question</button></form></div>'+
+    '<div class="card" style="margin-top:18px"><div class="nav" style="margin-top:0;align-items:center"><h2 style="margin:0" id="listTitle">Questions</h2><a class="muted" id="editLink" target="_blank" rel="noopener" href="#">Open in WordPress editor ↗</a></div>'+
+    '<input type="search" id="fSearch" placeholder="Search questions…" class="srch"><div id="qlist" class="muted">Choose an exam.</div></div>';
+  app.innerHTML = h;
+  restoreDraft();
+  document.getElementById('signout').onclick = signOut;
+
+  var sel = document.getElementById('fExam'), current = null;
+  getJSON(API + '?slug=learn&_fields=id').then(function(hub){
+    return getJSON(API + '?parent=' + hub[0].id + '&per_page=100&orderby=title&order=asc&_fields=slug,title');
+  }).then(function(list){
+    list = list.filter(function(e){return /^[a-z]{2,3}-\d+/i.test(e.slug);});
+    sel.innerHTML = '<option value="">Choose an exam…</option>' + list.map(function(e){return '<option value="'+esc(e.slug)+'">'+esc(e.title.rendered.replace(/<[^>]+>/g,''))+'</option>';}).join('');
+    if (exam) sel.value = exam;
+    loadList();
+  });
+  sel.onchange = function(){ exam = sel.value; history.replaceState(null,'',location.pathname+'?admin=1&exam='+exam); loadList(); };
+
+  function loadList(){
+    var ex = sel.value, box = document.getElementById('qlist');
+    if (!ex) { box.textContent = 'Choose an exam.'; current = null; return; }
+    box.textContent = 'Loading…';
+    findQuizPage(ex).then(function(p){
+      current = p;
+      document.getElementById('editLink').href = 'https://' + SITE + '/wp-admin/post.php?post=' + p.id + '&action=edit';
+      drawList();
+    }).catch(function(){ box.textContent = 'This exam has no Quiz page yet.'; current = null; });
+  }
+  function drawList(){
+    var box = document.getElementById('qlist'), s = document.getElementById('fSearch').value.toLowerCase();
+    document.getElementById('listTitle').textContent = sel.value.toUpperCase() + ' – ' + current.bank.length + ' questions';
+    var items = current.bank.map(function(q,i){return {q:q,i:i};}).filter(function(x){return !s || x.q.q.toLowerCase().indexOf(s) > -1;});
+    box.innerHTML = items.length ? '<ol class="qlist">' + items.map(function(x){
+      return '<li value="'+(x.i+1)+'"><b>'+esc(x.q.q)+'</b><br><span class="muted">Correct: '+x.q.c.map(function(c){return String.fromCharCode(65+c)+'. '+esc(x.q.o[c]);}).join(' · ')+'</span></li>';
+    }).join('') + '</ol>' : 'No questions found.';
+  }
+  document.getElementById('fSearch').oninput = function(){ if (current) drawList(); };
+
+  document.getElementById('qf').onsubmit = function(ev){
+    ev.preventDefault();
+    var msg = document.getElementById('msg');
+    var q = document.getElementById('fQ').value.trim();
+    var opts = Array.prototype.map.call(document.querySelectorAll('.fA'), function(x){return x.value.trim();});
+    var corr = Array.prototype.filter.call(document.querySelectorAll('.fC'), function(x){return x.checked;}).map(function(x){return String.fromCharCode(65 + +x.value);});
+    var ex = sel.value;
+    if (!ex) { msg.innerHTML = '<p class="err">Choose an exam.</p>'; return; }
+    if (!q || opts.some(function(o){return !o;})) { msg.innerHTML = '<p class="err">Fill in the question and all 4 answers.</p>'; return; }
+    if (!corr.length) { msg.innerHTML = '<p class="err">Tick the correct answer.</p>'; return; }
+    var btn = document.getElementById('saveBtn'); btn.disabled = true; msg.innerHTML = '<p class="muted">Saving…</p>';
+    var markup = questionMarkup(q, opts, corr.join(', '), document.getElementById('fE').value.trim());
+    findQuizPage(ex).then(function(p){
+      var url = 'https://public-api.wordpress.com/wp/v2/sites/' + SITE + '/pages/' + p.id;
+      return authFetch(url + '?context=edit&_fields=content').then(function(d){
+        var raw = d.content.raw;
+        return authFetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content: insertIntoBank(raw, markup)})});
+      });
+    }).then(function(){
+      msg.innerHTML = '<p class="ok">✓ Saved to ' + esc(ex.toUpperCase()) + '. It will appear in the next quizzes for this exam.</p>';
+      document.getElementById('qf').reset(); sel.value = ex; btn.disabled = false; loadList();
+      document.getElementById('fQ').focus();
+    }).catch(function(e){
+      btn.disabled = false;
+      if (e.message === 'auth') { msg.innerHTML = '<p class="err">Your sign-in has expired. <a href="#" id="re">Sign in again</a> (the question is kept in the form).</p>'; document.getElementById('re').onclick=function(ev){ev.preventDefault(); signIn(ex);}; }
+      else if (e.message === 'nobank') msg.innerHTML = '<p class="err">The Quiz page of this exam has no “Question bank” section.</p>';
+      else msg.innerHTML = '<p class="err">Saving failed (' + esc(e.message) + '). Please try again.</p>';
+    });
+  };
+}
+
 // ---------- start ----------
 document.getElementById('crumbExam').textContent = exam ? exam.toUpperCase() : 'Exam';
 document.getElementById('crumbExam').href = examUrl;
 document.getElementById('backTop').href = quizUrl;
+
+if (params.get('admin') === '1') { if (!exam) { document.getElementById('backTop').href = 'https://' + SITE + '/manage-exams/'; } renderAdmin(); return; }
 
 if (!exam) { app.innerHTML = '<div class="err">No exam selected. <a href="https://'+SITE+'/learn/">Choose an exam</a>.</div>'; return; }
 
