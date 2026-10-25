@@ -322,14 +322,14 @@ function restoreDraft(){
 function signIn(ex){
   saveDraft();
   location.href = 'https://public-api.wordpress.com/oauth2/authorize?client_id=' + encodeURIComponent(CLIENT_ID) +
-    '&redirect_uri=' + encodeURIComponent(REDIRECT) + '&response_type=token&blog=' + encodeURIComponent(SITE) + '&state=' + encodeURIComponent(ex||'');
+    '&redirect_uri=' + encodeURIComponent(REDIRECT) + '&response_type=token&blog=257643930&state=' + encodeURIComponent(ex||'');
 }
 function signOut(){try{localStorage.removeItem(TOKEN_KEY);}catch(e){} renderAdmin();}
 function authFetch(url, opts){
   opts = opts || {}; opts.headers = opts.headers || {};
   opts.headers['Authorization'] = 'Bearer ' + getToken();
   return fetch(url, opts).then(function(r){
-    if (r.status === 401 || r.status === 403) { try{localStorage.removeItem(TOKEN_KEY);}catch(e){} throw new Error('auth'); }
+    if (r.status === 401 || r.status === 403) { try{localStorage.removeItem(TOKEN_KEY);}catch(e){} throw new Error(r.status === 403 ? 'site' : 'auth'); }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   });
@@ -373,7 +373,7 @@ function renderAdmin(){
   var token = getToken();
   var h = '<div class="card">';
   if (!token) {
-    h += '<h2 style="margin-top:0">Sign in to add questions</h2><p class="muted">Only the site administrator can add questions. Sign in with your WordPress.com account (the first time, click <b>Approve</b>).</p>'+
+    h += '<h2 style="margin-top:0">Sign in to add questions</h2><p class="muted">Only the site administrator can add questions. Sign in with your WordPress.com account. Under “Authorize access for” choose <b>d365microsoft.wordpress.com</b> and click <b>Approve</b>.</p>'+
       '<button class="btn" id="signin">Sign in with WordPress.com</button></div>';
     app.innerHTML = h; document.getElementById('signin').onclick = function(){ signIn(exam); }; return;
   }
@@ -447,6 +447,7 @@ function renderAdmin(){
     }).catch(function(e){
       btn.disabled = false;
       if (e.message === 'auth') { msg.innerHTML = '<p class="err">Your sign-in has expired. <a href="#" id="re">Sign in again</a> (the question is kept in the form).</p>'; document.getElementById('re').onclick=function(ev){ev.preventDefault(); signIn(ex);}; }
+      else if (e.message === 'site') { msg.innerHTML = '<p class="err">You signed in for a different site. <a href="#" id="re">Sign in again</a> and under “Authorize access for” choose <b>d365microsoft.wordpress.com</b>.</p>'; document.getElementById('re').onclick=function(ev){ev.preventDefault(); signIn(ex);}; }
       else if (e.message === 'nobank') msg.innerHTML = '<p class="err">The Quiz page of this exam has no “Question bank” section.</p>';
       else msg.innerHTML = '<p class="err">Saving failed (' + esc(e.message) + '). Please try again.</p>';
     });
