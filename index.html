@@ -16,6 +16,8 @@ body{margin:0;font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-seri
 a{color:var(--blue)}
 header.top{background:#fff;border-bottom:1px solid var(--line)}
 header.top .in{max-width:860px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.backbtn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--blue);color:var(--blue);background:#fff;border-radius:999px;padding:8px 16px;font-weight:700;font-size:14px;text-decoration:none}
+.backbtn:hover{background:var(--blue);color:#fff}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--navy);text-decoration:none}
 .brand i{width:18px;height:18px;border:3px solid var(--blue);border-radius:50%;display:inline-block}
 .hero{background:linear-gradient(100deg,#062a63,#0b6bcb 60%,#16a3a0);color:#fff}
@@ -48,8 +50,13 @@ main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
 .opt input{margin-top:4px;accent-color:var(--blue)}
 .opt b{min-width:18px}
 .nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px;flex-wrap:wrap}
-.grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:18px}
-.grid button{width:36px;height:36px;border-radius:8px;border:1.5px solid var(--line);background:#fff;font-weight:600;cursor:pointer;color:var(--ink)}
+.gridwrap{display:flex;align-items:center;gap:8px;margin-top:18px}
+.grid{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;flex:1;padding:3px}
+.grid::-webkit-scrollbar{display:none}
+.arrow{flex:0 0 36px;width:36px;height:36px;border-radius:50%;border:1.5px solid var(--blue);background:#fff;color:var(--blue);font:700 18px/1 system-ui;cursor:pointer;display:grid;place-items:center}
+.arrow:hover{background:#eef5fd}
+.arrow:disabled{opacity:.3;cursor:default;background:#fff}
+.grid button{flex:0 0 36px;width:36px;height:36px;border-radius:8px;border:1.5px solid var(--line);background:#fff;font-weight:600;cursor:pointer;color:var(--ink)}
 .grid button.done{background:#dbe9fb;border-color:#a9c4e6}
 .grid button.cur{border-color:var(--blue);outline:2px solid var(--blue)}
 /* results */
@@ -91,7 +98,7 @@ dialog::backdrop{background:rgba(10,42,92,.35)}
 <body>
 <header class="top"><div class="in">
   <a class="brand" id="homeLink" href="https://d365microsoft.wordpress.com/"><i></i>Dynamics Lab</a>
-  <a id="backTop" class="muted" href="https://d365microsoft.wordpress.com/learn/">← Back to the exam</a>
+  <a id="backTop" class="backbtn" href="https://d365microsoft.wordpress.com/learn/">← Back to the exam</a>
 </div></header>
 <section class="hero"><div class="in">
   <div class="crumbs"><a href="https://d365microsoft.wordpress.com/">Home</a> › <a href="https://d365microsoft.wordpress.com/learn/">Microsoft Exams</a> › <a id="crumbExam" href="#">Exam</a></div>
@@ -233,7 +240,7 @@ function renderQuiz(){
   });
   h += '<div class="nav"><button class="btn ghost" id="prev"'+(i===0?' disabled':'')+'>← Previous</button>'+
     (i<n-1 ? '<button class="btn" id="next">Next →</button>' : '<button class="btn" id="fin2">Finish quiz</button>')+'</div>';
-  h += '<div class="grid">'+state.qs.map(function(_,k){return '<button data-k="'+k+'" class="'+(answered(k)?'done ':'')+(k===i?'cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>';}).join('')+'</div></div>';
+  h += '<div class="gridwrap"><button class="arrow" id="gl" aria-label="Scroll left">‹</button><div class="grid" id="grid">'+state.qs.map(function(_,k){return '<button data-k="'+k+'" class="'+(answered(k)?'done ':'')+(k===i?'cur':'')+'" aria-label="Question '+(k+1)+'">'+(k+1)+'</button>';}).join('')+'</div><button class="arrow" id="gr" aria-label="Scroll right">›</button></div></div>';
   app.innerHTML = h;
 
   app.querySelectorAll('input[name=o]').forEach(function(inp){
@@ -246,6 +253,14 @@ function renderQuiz(){
   var prev=document.getElementById('prev'); if(prev) prev.onclick=function(){go(i-1);};
   var next=document.getElementById('next'); if(next) next.onclick=function(){go(i+1);};
   app.querySelectorAll('.grid button').forEach(function(b){b.onclick=function(){go(+b.dataset.k);};});
+  var grid = document.getElementById('grid'), gl = document.getElementById('gl'), gr = document.getElementById('gr');
+  var arrows = function(){ gl.disabled = grid.scrollLeft <= 2; gr.disabled = grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 2; };
+  var cb = grid.children[i]; grid.style.scrollBehavior = 'auto';
+  grid.scrollLeft = Math.max(0, cb.offsetLeft - grid.offsetLeft - (grid.clientWidth - cb.offsetWidth) / 2);
+  grid.style.scrollBehavior = ''; arrows();
+  grid.addEventListener('scroll', arrows);
+  gl.onclick = function(){ grid.scrollBy({left: -grid.clientWidth * 0.8}); };
+  gr.onclick = function(){ grid.scrollBy({left: grid.clientWidth * 0.8}); };
   var ask=function(){
     var left = n - state.ans.filter(function(a){return a.length;}).length;
     document.getElementById('confirmText').textContent = left ? ('You have '+left+' unanswered question'+(left>1?'s':'')+'. Unanswered questions count as incorrect.') : 'You have answered all questions.';
